@@ -1,5 +1,5 @@
 {
-  "name": "qbnk/qbank3api-phpwrapper",
+  "name": "nodeone/qbank3api-phpwrapper",
   "description": "A PHP-Wrapper for QBank 3's API. Provides a simple way to communicate with QBank 3 from PHP.",
   "keywords": [
     "qbank",
