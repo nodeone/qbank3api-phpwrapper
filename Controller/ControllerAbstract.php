@@ -101,7 +101,7 @@ abstract class ControllerAbstract implements LoggerAwareInterface
         try {
             $start = microtime(true);
             /** @var ResponseInterface $response */
-            $response = $this->client->{$method}($endpoint, $parameters);
+            $response = $this->client->{$method}($endpoint .'.json', $parameters);
             $this->logger->debug(
                 'Request to QBank sent. '.strtoupper($method).' '.$endpoint,
                 [

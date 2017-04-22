@@ -7,10 +7,9 @@ use Doctrine\Common\Cache\CacheProvider;
 use GuzzleHttp\Client;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
-use QBNK\GuzzleOAuth2\GrantType\PasswordCredentials;
-use QBNK\GuzzleOAuth2\GrantType\RefreshToken;
-use QBNK\GuzzleOAuth2\OAuth2Subscriber;
-use QBNK\GuzzleOAuth2\TokenData;
+use Frankkessler\Guzzle\Oauth2\GrantType\RefreshToken;
+use Frankkessler\Guzzle\Oauth2\GrantType\PasswordCredentials;
+use Frankkessler\Guzzle\Oauth2\Oauth2Client;
 use QBNK\QBank\API\Controller\AccountsController;
 use QBNK\QBank\API\Controller\CategoriesController;
 use QBNK\QBank\API\Controller\DeploymentController;
@@ -49,11 +48,8 @@ class QBankApi
     /** @var CachePolicy */
     protected $cachePolicy;
 
-    /** @var Client */
+    /** @var Oauth2Client */
     protected $client;
-
-    /** @var OAuth2Subscriber */
-    protected $oauth2Subscriber;
 
     /** @var bool */
     protected $verifyCertificates;
@@ -96,8 +92,10 @@ class QBankApi
 
     /** @var TemplatesController */
     protected $templates;
+  protected $token;
+  protected $refreshToken;
 
-    /**
+  /**
      * @param string $qbankURL The URL to the QBank API.
      * @param Credentials $credentials The credentials used to connect.
      * @param array $options Associative array containing options.
@@ -372,67 +370,38 @@ class QBankApi
     /**
      * Gets the Guzzle client instance used for making calls.
      *
-     * @return Client
+     * @return Oauth2Client
      */
     protected function getClient()
     {
-        if (!($this->client instanceof Client)) {
-            $this->client = new Client([
-                'base_url' => $this->basepath,
-                'defaults' => [
-                    'headers' => [
-                        'Accept'       => 'application/json',
-                        'Content-type' => 'application/json',
-                        'User-Agent'   => 'qbank3api-phpwrapper/1 (qbankapi: 1; swagger: 1.1)',
-                    ],
-                ],
-                'verify' => $this->verifyCertificates,
-            ]);
-            $this->client->getEmitter()->attach($this->getOAuth2Subscriber());
-            $this->logger->debug('Guzzle client instantiated.', ['basepath' => $this->basepath]);
+        if (!($this->client instanceof Oauth2Client)) {
+
+          $this->client = new Oauth2Client([
+            'base_uri' => $this->basepath,
+            'defaults' => [
+              'headers' => [
+                'Accept'       => 'application/json',
+                'Content-type' => 'application/json',
+                'User-Agent'   => 'qbank3api-phpwrapper/1 (qbankapi: 1; swagger: 1.1)',
+              ],
+            ],
+            'verify' => $this->verifyCertificates,
+          ]);
+
+          $config = [
+            'username' => $this->credentials->getUsername(),
+            'password' => $this->credentials->getPassword(),
+            'client_id' => $this->credentials->getClientId(),
+            'token_url' => $this->basepath . 'v1/oauth2/token.json'
+          ];
+
+          $this->token = new PasswordCredentials($config);
+          $this->client->setGrantType($this->token);
+          $this->refreshToken = new RefreshToken($config);
+          $this->client->setRefreshTokenGrantType($this->refreshToken);
         }
 
         return $this->client;
-    }
-
-    /**
-     * Gets the instance of the OAuth2 subscriber.
-     *
-     * @return OAuth2Subscriber
-     */
-    protected function getOAuth2Subscriber()
-    {
-        if (!($this->oauth2Subscriber instanceof OAuth2Subscriber)) {
-            $client                 = new Client(['base_url' => $this->basepath.'oauth2/token']);
-            $this->oauth2Subscriber = new OAuth2Subscriber(
-                new PasswordCredentials(
-                    $client,
-                    [
-                        'client_id' => $this->credentials->getClientId(),
-                        'username'  => $this->credentials->getUsername(),
-                        'password'  => $this->credentials->getPassword(),
-                    ]
-                ),
-                new RefreshToken($client, ['client_id' => $this->credentials->getClientId()])
-            );
-            $this->oauth2Subscriber->tokenPersistence(function ($method, TokenData $token = null) {
-                switch ($method) {
-                    case 'get':
-                        return $this->getToken();
-                        break;
-                    case 'set':
-                        $this->setCachedToken($token);
-                        break;
-                    case 'delete':
-                        $this->invalidateCachedToken();
-                        break;
-                }
-
-                return;
-            });
-        }
-
-        return $this->oauth2Subscriber;
     }
 
     /**
@@ -452,9 +421,9 @@ class QBankApi
         $this->credentials = new Credentials($this->credentials->getClientId(), $user, $password);
         unset($password);
         if ($this->client instanceof Client) {
-            $this->client->getEmitter()->detach($this->oauth2Subscriber);
+//TODO            $this->client->getEmitter()->detach($this->oauth2Subscriber);
             $this->oauth2Subscriber = null;
-            $this->client->getEmitter()->attach($this->getOAuth2Subscriber());
+//TODO            $this->client->getEmitter()->attach($this->getOAuth2Subscriber());
         }
         if ($this->cache instanceof CacheProvider) {
             $this->cache->setNamespace(md5($this->basepath.$this->credentials->getUsername().$this->credentials->getPassword()));
@@ -485,19 +454,22 @@ class QBankApi
      */
     public function getToken()
     {
-        $token = new TokenData();
-        if ($this->oauth2Subscriber instanceof OAuth2Subscriber) {
-            $token = $this->oauth2Subscriber->getTokenData();
-        }
-        if (!$token->accessToken && $this->cache instanceof Cache && $this->cache->contains('oauth2token')) {
-            $token = unserialize($this->cache->fetch('oauth2token'));
-        }
-        if (!$token->accessToken) {
-            $response = $this->getClient()->get();      // Trigger call to get a token. Don't care about the result.
-            $token    = $this->oauth2Subscriber->getTokenData();
-        }
-
-        return $token->accessToken ? $token : null;
+      if ($this->getClient()){
+        return $this->client->getToken($this->token);
+      }
+//        $token = new TokenData();
+//        if ($this->oauth2Subscriber instanceof OAuth2Subscriber) {
+//            $token = $this->oauth2Subscriber->getTokenData();
+//        }
+//        if (!$token->accessToken && $this->cache instanceof Cache && $this->cache->contains('oauth2token')) {
+//            $token = unserialize($this->cache->fetch('oauth2token'));
+//        }
+//        if (!$token->accessToken) {
+//            $response = $this->getClient()->get();      // Trigger call to get a token. Don't care about the result.
+//            $token    = $this->oauth2Subscriber->getTokenData();
+//        }
+//
+//        return $token->accessToken ? $token : null;
     }
 
     /**
