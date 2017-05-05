@@ -114,9 +114,9 @@ abstract class ControllerAbstract implements LoggerAwareInterface
             );
 
             $data = null;
-            if (in_array('application/json', array_map('trim', explode(';', $response->getHeader('Content-type'))))) {
+            if (in_array('application/json', array_map('trim', explode(';', $response->getHeader('Content-type')[0])))) {
                 try {
-                    $data = $response->json();
+                    $data = json_decode($response->getBody(), TRUE);
                 } catch (\RuntimeException $re) {
                     $this->logger->error(
                         'Error while receiving response from QBank. '.strtoupper($method).' '.$endpoint,
