@@ -89,7 +89,7 @@ use QBNK\QBank\API\Model\DownloadItem;
     {
         $parameters = [
             'query'   => [],
-            'body'    => json_encode(['sourceId' => $sourceId, 'sessionHash' => $sessionHash, 'remoteIp' => $remoteIp, 'userAgent' => $userAgent, 'userId' => $userId]),
+            'form_params'    => ['sourceId' => $sourceId, 'sessionHash' => $sessionHash, 'remoteIp' => $remoteIp, 'userAgent' => $userAgent, 'userId' => $userId],
             'headers' => [],
         ];
         $result = $this->post('v1/events/session', $parameters);
@@ -105,18 +105,26 @@ use QBNK\QBank\API\Model\DownloadItem;
      
      * @return MediaUsageResponse	 
      */
-    public function addUsage($sessionId, MediaUsage $mediaUsage)
-    {
-        $parameters = [
-            'query'   => [],
-            'body'    => json_encode(['sessionId' => $sessionId, 'mediaUsage' => $mediaUsage]),
-            'headers' => [],
+      public function addUsage($sessionId, MediaUsage $mediaUsage) {
+        $media_usage_array = [
+          'mediaId'  => $mediaUsage->getMediaId(),
+          'mediaUrl' => $mediaUsage->getMediaUrl(),
+          'pageUrl'  => $mediaUsage->getPageUrl(),
+          'context'  => $mediaUsage->getContext(),
+          'language' => $mediaUsage->getLanguage(),
         ];
-        $result = $this->post('v1/events/usage', $parameters);
-        $result = new MediaUsageResponse($result);
+        $parameters        = [
+          'query'       => [],
+          'form_params' => ['sessionId'  => $sessionId,
+                            'mediaUsage' => $media_usage_array,
+          ],
+          'headers'     => [],
+        ];
+        $result            = $this->post('v1/events/usage', $parameters);
+        $result            = new MediaUsageResponse($result);
 
         return $result;
-    }
+      }
 
     /**
      * Track a Media view.
